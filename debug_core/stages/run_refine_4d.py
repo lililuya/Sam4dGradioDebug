@@ -10,7 +10,10 @@ from debug_core.adapters.body4d_runtime_adapter import (
 )
 from debug_core.adapters.recording_frame_writer import RecordedFrameWriter
 from debug_core.config import DebugAppConfig
-from debug_core.adapters.refined_runtime_adapter import resolve_upstream_runtime_paths
+from debug_core.adapters.refined_runtime_adapter import (
+    build_compat_sample_summaries,
+    resolve_upstream_runtime_paths,
+)
 
 
 def _ensure_body4d_stub_outputs(*, run_dir: Path) -> dict[str, str]:
@@ -94,9 +97,10 @@ def _run_real_body4d_stage(
     sample = app.prepare_input(input_path, str(run_dir), skip_existing=False)
     app.sample_config = cfg
     app.sample_summary = {"status": "body4d_only"}
-    app.sample_summary["fps_summary"] = app._build_sample_fps_summary(sample)
-    app.sample_summary["bitrate_summary"] = app._build_sample_bitrate_summary(sample)
-    app.sample_summary["clip_duration_summary"] = app._build_clip_duration_summary(sample)
+    compat_summaries = build_compat_sample_summaries(app, sample)
+    app.sample_summary["fps_summary"] = compat_summaries["fps_summary"]
+    app.sample_summary["bitrate_summary"] = compat_summaries["bitrate_summary"]
+    app.sample_summary["clip_duration_summary"] = compat_summaries["clip_duration_summary"]
 
     obj_ids = [int(value) for value in list(tracking_result.get("obj_ids") or [])]
     if not obj_ids:

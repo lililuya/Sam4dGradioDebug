@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import os
 import sys
 from pathlib import Path
@@ -106,6 +105,66 @@ def _create_runtime_profile(selection: dict) -> dict:
     }
 
 
+def build_compat_sample_summaries(app, sample: dict) -> dict:
+    fps_builder = getattr(app, "_build_sample_fps_summary", None)
+    bitrate_builder = getattr(app, "_build_sample_bitrate_summary", None)
+    duration_builder = getattr(app, "_build_clip_duration_summary", None)
+
+    fps_fallback = {
+        "source_fps": float(sample.get("fps", 0.0) or 0.0),
+        "source_fps_source": "sample_metadata",
+        "rendered_4d_fps": float(sample.get("fps", 0.0) or 0.0),
+        "wan_target_fps": None,
+    }
+    if callable(fps_builder):
+        try:
+            fps_summary = dict(fps_builder(sample))
+        except Exception:
+            fps_summary = dict(fps_fallback)
+    else:
+        fps_summary = dict(fps_fallback)
+
+    bitrate_fallback = {
+        "source_bitrate": None,
+        "source_bitrate_source": "unavailable",
+        "rendered_4d_bitrate": None,
+    }
+    if callable(bitrate_builder):
+        try:
+            bitrate_summary = dict(bitrate_builder(sample))
+        except Exception:
+            bitrate_summary = dict(bitrate_fallback)
+    else:
+        bitrate_summary = dict(bitrate_fallback)
+
+    frame_count = int(sample.get("frame_count", 0) or 0)
+    fps_value = float(fps_summary.get("source_fps", 0.0) or sample.get("fps", 0.0) or 0.0)
+    duration_seconds = 0.0
+    if frame_count > 0 and fps_value > 0.0:
+        duration_seconds = float(frame_count) / float(fps_value)
+    duration_fallback = {
+        "frame_count": frame_count,
+        "fps": fps_value,
+        "duration_seconds": float(duration_seconds),
+        "max_clip_len_seconds": 0.0,
+        "input_type": str(sample.get("input_type") or ""),
+        "clip_dir": str(sample.get("clip_dir") or ""),
+    }
+    if callable(duration_builder):
+        try:
+            clip_duration_summary = dict(duration_builder(sample))
+        except Exception:
+            clip_duration_summary = dict(duration_fallback)
+    else:
+        clip_duration_summary = dict(duration_fallback)
+
+    return {
+        "fps_summary": fps_summary,
+        "bitrate_summary": bitrate_summary,
+        "clip_duration_summary": clip_duration_summary,
+    }
+
+
 def _read_video_frame(video_path: str, frame_index: int) -> np.ndarray:
     capture = cv2.VideoCapture(video_path)
     try:
@@ -133,9 +192,10 @@ def _initialize_real_tracking_app(
     sample = app.prepare_input(str(sample_context["clip_dir"]), str(run_dir), skip_existing=False)
     app.sample_config = cfg
     app.sample_summary = {"status": "tracking_only"}
-    app.sample_summary["fps_summary"] = app._build_sample_fps_summary(sample)
-    app.sample_summary["bitrate_summary"] = app._build_sample_bitrate_summary(sample)
-    app.sample_summary["clip_duration_summary"] = app._build_clip_duration_summary(sample)
+    compat_summaries = build_compat_sample_summaries(app, sample)
+    app.sample_summary["fps_summary"] = compat_summaries["fps_summary"]
+    app.sample_summary["bitrate_summary"] = compat_summaries["bitrate_summary"]
+    app.sample_summary["clip_duration_summary"] = compat_summaries["clip_duration_summary"]
     return app, sample
 
 
