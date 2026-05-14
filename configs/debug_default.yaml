@@ -1,0 +1,37 @@
+debug_mode:
+  preserve_all_intermediate: true
+  create_revision_per_rerun: true
+  keep_logs: true
+  keep_preview_cache: true
+
+runtime:
+  save_rendered_video: true
+  save_rendered_video_direct: false
+  save_rendered_frames: true
+  save_rendered_frames_individual: true
+  save_mesh_4d_individual: true
+  save_focal_4d_individual: true
+
+wan_export:
+  enable: true
+  copy_rendered_4d_to_targets: true
+  cleanup_sample_workdir_after_export: false
+  save_pose_meta_json: true
+  save_smpl_sequence_json: true
+  face_expand: 1.30
+  face_gap: 8
+  min_valid_face_ratio: 0.0
+
+debug:
+  save_metrics: true
+
+refine:
+  enable: true
+
+reprompt:
+  enable: true
+
+upstream:
+  repo_root: ../../sam-body4d-master
+  refined_config_path: ../../sam-body4d-master/configs/body4d_refined_split_wan_standard_zh.yaml
+  enable_real_runtime: true
