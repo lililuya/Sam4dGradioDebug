@@ -14,6 +14,7 @@ from debug_core.adapters.refined_runtime_adapter import (
     build_compat_sample_summaries,
     resolve_upstream_runtime_paths,
 )
+from debug_core.adapters.recording_frame_writer import load_recorded_frame_outputs
 
 
 def _ensure_body4d_stub_outputs(*, run_dir: Path) -> dict[str, str]:
@@ -64,6 +65,9 @@ def _run_stub_body4d_stage(
         "mesh_dir": stub_outputs["mesh_dir"],
         "focal_dir": stub_outputs["focal_dir"],
         "recorded_frame_outputs_path": str(finalized_outputs[0]),
+        "recorded_frame_outputs_count": 0,
+        "wan_export_replay_ready": False,
+        "wan_export_replay_error": "Recorded body4d frame outputs are empty.",
         "real_runtime_used": False,
         "stub_reason": str(stub_reason),
     }
@@ -140,6 +144,8 @@ def _run_real_body4d_stage(
         run_dir=run_dir,
         rendered_video_path=rendered_video_path,
     )
+    recorded_records = load_recorded_frame_outputs(frame_record_path) if Path(frame_record_path).is_file() else []
+    recorded_count = len(recorded_records)
     return {
         "run_dir": str(run_dir),
         "input_tracking_run": dict(tracking_result),
@@ -150,6 +156,9 @@ def _run_real_body4d_stage(
         "mesh_dir": str(run_dir / "mesh_4d_individual"),
         "focal_dir": str(run_dir / "focal_4d_individual"),
         "recorded_frame_outputs_path": str(frame_record_path),
+        "recorded_frame_outputs_count": int(recorded_count),
+        "wan_export_replay_ready": bool(recorded_count > 0),
+        "wan_export_replay_error": "" if recorded_count > 0 else "Recorded body4d frame outputs are empty.",
         "real_runtime_used": True,
         "upstream_repo_root": str(repo_root),
         "upstream_refined_config_path": str(refined_config_path),
@@ -181,12 +190,20 @@ def run_body4d_stage(*, runtime_session, tracking_result: dict, debug_config: De
         )
 
     try:
-        return _run_real_body4d_stage(
+        result = _run_real_body4d_stage(
             tracking_result=tracking_result,
             run_dir=Path(run_dir),
             frame_record_path=frame_record_path,
             debug_config=debug_config,
         )
+        recorded_path = Path(str(result.get("recorded_frame_outputs_path") or "")).resolve() if result.get("recorded_frame_outputs_path") else None
+        if "recorded_frame_outputs_count" not in result or "wan_export_replay_ready" not in result:
+            recorded_records = load_recorded_frame_outputs(recorded_path) if recorded_path and recorded_path.is_file() else []
+            recorded_count = len(recorded_records)
+            result["recorded_frame_outputs_count"] = int(recorded_count)
+            result["wan_export_replay_ready"] = bool(recorded_count > 0)
+            result["wan_export_replay_error"] = "" if recorded_count > 0 else "Recorded body4d frame outputs are empty."
+        return result
     except Exception as exc:
         result = _run_stub_body4d_stage(
             tracking_result=tracking_result,

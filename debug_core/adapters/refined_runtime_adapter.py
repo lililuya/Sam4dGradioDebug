@@ -7,6 +7,10 @@ import cv2
 import numpy as np
 
 from debug_core.config import DebugAppConfig
+from debug_core.views.stage_video_artifacts import (
+    build_mask_preview_video,
+    build_tracking_preview_video,
+)
 
 
 def resolve_upstream_runtime_paths(config: DebugAppConfig) -> dict:
@@ -57,6 +61,18 @@ def _run_tracking_stub(*, sample_context: dict, selection: dict, run_dir: Path) 
         finally:
             capture.release()
 
+    effective_mask_video_path = build_mask_preview_video(
+        mask_dir=working_mask_dir,
+        output_path=run_dir / "effective_mask_preview.mp4",
+        fps=float(sample_context.get("fps", 0.0) or 0.0),
+    )
+    tracking_preview_video_path = build_tracking_preview_video(
+        image_dir=image_dir,
+        mask_dir=working_mask_dir,
+        output_path=run_dir / "tracking_preview.mp4",
+        fps=float(sample_context.get("fps", 0.0) or 0.0),
+    )
+
     return {
         "run_dir": run_dir,
         "selection_used": dict(selection),
@@ -79,6 +95,8 @@ def _run_tracking_stub(*, sample_context: dict, selection: dict, run_dir: Path) 
         "clip_id": str(sample_context.get("clip_id") or ""),
         "sample_uuid": str(sample_context.get("sample_uuid") or ""),
         "source_path": str(sample_context.get("source_path") or ""),
+        "effective_mask_video_path": str(effective_mask_video_path) if effective_mask_video_path else "",
+        "tracking_preview_video_path": str(tracking_preview_video_path) if tracking_preview_video_path else "",
     }
 
 
@@ -351,6 +369,18 @@ def run_tracking_with_override(
 
     overlay_dir = run_dir / "overlays"
     overlay_dir.mkdir(parents=True, exist_ok=True)
+    effective_mask_video_path = build_mask_preview_video(
+        mask_dir=Path(str(run_dir)) / "masks",
+        output_path=Path(str(run_dir)) / "effective_mask_preview.mp4",
+        fps=float(sample.get("fps") or 0.0),
+    )
+    tracking_preview_video_path = build_tracking_preview_video(
+        image_dir=app.output_paths["images"],
+        mask_dir=Path(str(run_dir)) / "masks",
+        output_path=Path(str(run_dir)) / "tracking_preview.mp4",
+        fps=float(sample.get("fps") or 0.0),
+    )
+
     return {
         "run_dir": run_dir,
         "selection_used": dict(selection),
@@ -376,4 +406,6 @@ def run_tracking_with_override(
         "clip_id": str(sample.get("clip_id") or ""),
         "sample_uuid": str(sample.get("sample_uuid") or ""),
         "source_path": str(sample.get("source_path") or ""),
+        "effective_mask_video_path": str(effective_mask_video_path) if effective_mask_video_path else "",
+        "tracking_preview_video_path": str(tracking_preview_video_path) if tracking_preview_video_path else "",
     }

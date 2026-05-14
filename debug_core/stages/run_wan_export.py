@@ -62,6 +62,9 @@ def _run_real_wan_export_stage(
     recorded_frame_outputs_path = str(body4d_result.get("recorded_frame_outputs_path") or "").strip()
     if not recorded_frame_outputs_path:
         raise RuntimeError("Real wan export stage requires body4d recorded_frame_outputs_path.")
+    if body4d_result.get("wan_export_replay_ready") is False:
+        replay_error = str(body4d_result.get("wan_export_replay_error") or "Recorded body4d frame outputs are empty.")
+        raise RuntimeError(replay_error)
 
     recorded_records = load_recorded_frame_outputs(recorded_frame_outputs_path)
     if not recorded_records:

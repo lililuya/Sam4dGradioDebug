@@ -1,4 +1,5 @@
 from pathlib import Path
+import pickle
 
 from debug_core.config import load_debug_config
 from debug_core.session import create_debug_session
@@ -95,7 +96,19 @@ def test_run_body4d_stage_prefers_real_runtime_branch_when_upstream_is_available
     tracking_result = _build_tracking_result(tmp_path)
 
     def _fake_real_body4d_runner(*, tracking_result, run_dir, frame_record_path, debug_config):
-        Path(frame_record_path).write_bytes(b"frame-records")
+        with Path(frame_record_path).open("wb") as handle:
+            pickle.dump(
+                [
+                    {
+                        "frame_stem": "00000000",
+                        "image_path": str(Path(run_dir) / "images" / "00000000.jpg"),
+                        "mask_output": [],
+                        "id_current": [1],
+                    }
+                ],
+                handle,
+                protocol=pickle.HIGHEST_PROTOCOL,
+            )
         rendered_frames_dir = Path(run_dir) / "rendered_frames"
         mesh_dir = Path(run_dir) / "mesh_4d_individual"
         focal_dir = Path(run_dir) / "focal_4d_individual"
@@ -125,3 +138,58 @@ def test_run_body4d_stage_prefers_real_runtime_branch_when_upstream_is_available
     assert result["real_runtime_used"] is True
     assert Path(result["recorded_frame_outputs_path"]).is_file()
     assert Path(result["rendered_video_path"]).is_file()
+
+
+def test_run_body4d_stage_marks_empty_recorded_outputs_as_not_replay_ready(tmp_path: Path, monkeypatch):
+    repo_root = tmp_path / "sam-body4d-master"
+    refined_config_path = repo_root / "configs" / "body4d_refined.yaml"
+    refined_config_path.parent.mkdir(parents=True)
+    refined_config_path.write_text("runtime: {}\nwan_export: {}\n", encoding="utf-8")
+    config_path = _write_runtime_debug_config(
+        path=tmp_path / "debug.yaml",
+        repo_root=repo_root,
+        refined_config_path=refined_config_path,
+        enable_real_runtime=True,
+    )
+    debug_config = load_debug_config(config_path)
+    runtime_session = create_debug_session(
+        clip_id="sampleuuid_face01_seg001",
+        sample_uuid="sampleuuid",
+        source_path="/dataset/source.mp4",
+        output_root=tmp_path / "outputs",
+    )
+    tracking_result = _build_tracking_result(tmp_path)
+
+    def _fake_real_body4d_runner(*, tracking_result, run_dir, frame_record_path, debug_config):
+        with Path(frame_record_path).open("wb") as handle:
+            pickle.dump([], handle, protocol=pickle.HIGHEST_PROTOCOL)
+        rendered_frames_dir = Path(run_dir) / "rendered_frames"
+        mesh_dir = Path(run_dir) / "mesh_4d_individual"
+        focal_dir = Path(run_dir) / "focal_4d_individual"
+        for path in (rendered_frames_dir, mesh_dir, focal_dir):
+            path.mkdir(parents=True, exist_ok=True)
+        rendered_video_path = Path(run_dir) / "4d.mp4"
+        rendered_video_path.write_bytes(b"video")
+        return {
+            "run_dir": str(run_dir),
+            "input_tracking_run": dict(tracking_result),
+            "rendered_video_path": str(rendered_video_path),
+            "rendered_frames_dir": str(rendered_frames_dir),
+            "mesh_dir": str(mesh_dir),
+            "focal_dir": str(focal_dir),
+            "recorded_frame_outputs_path": str(frame_record_path),
+            "real_runtime_used": True,
+        }
+
+    monkeypatch.setattr(run_refine_4d_stage_module, "_run_real_body4d_stage", _fake_real_body4d_runner)
+
+    result = run_refine_4d_stage_module.run_body4d_stage(
+        runtime_session=runtime_session,
+        tracking_result=tracking_result,
+        debug_config=debug_config,
+    )
+
+    assert result["real_runtime_used"] is True
+    assert result["wan_export_replay_ready"] is False
+    assert result["recorded_frame_outputs_count"] == 0
+    assert "recorded body4d frame outputs are empty" in result["wan_export_replay_error"].lower()

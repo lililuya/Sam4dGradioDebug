@@ -11,6 +11,17 @@ from debug_core.stages.load_clip_package import load_clip_package
 
 
 APP_CONTROLLER: DebugPipelineController | None = None
+APP_ROOT = Path(__file__).resolve().parent
+
+
+def _resolve_config_path(config_path: str) -> str:
+    candidate = Path(config_path).expanduser()
+    if candidate.is_absolute() and candidate.exists():
+        return str(candidate)
+    repo_relative = (APP_ROOT / candidate).resolve()
+    if repo_relative.exists():
+        return str(repo_relative)
+    return str(candidate.resolve())
 
 
 def _get_controller(output_root: str) -> DebugPipelineController:
@@ -22,7 +33,7 @@ def _get_controller(output_root: str) -> DebugPipelineController:
 
 
 def _load_sample_for_ui(clip_dir: str, config_path: str, output_root: str):
-    debug_config = load_debug_config(config_path)
+    debug_config = load_debug_config(_resolve_config_path(config_path))
     controller = _get_controller(output_root)
     sample_context = load_clip_package(clip_dir)
     session = controller.bootstrap_session(sample_context, debug_config=debug_config)
@@ -171,10 +182,13 @@ def build_app():
         with gr.Accordion("Tracking / Mask", open=True):
             run_tracking_button = gr.Button("Run Tracking / Mask")
             tracking_result = gr.JSON(label="Tracking Result")
+            tracking_mask_video = gr.Video(label="Effective Mask Video")
+            tracking_preview_video = gr.Video(label="Tracking Preview Video")
 
         with gr.Accordion("4D", open=False):
             run_body4d_button = gr.Button("Run 4D")
             body4d_result = gr.JSON(label="Body4D Result")
+            body4d_video = gr.Video(label="4D Rendered Video")
 
         with gr.Accordion("Wan Export", open=False):
             run_wan_export_button = gr.Button("Run Wan Export")
@@ -212,8 +226,27 @@ def build_app():
             inputs=[output_root, frame_slider],
             outputs=[current_frame, x1, y1, x2, y2, status_text],
         )
-        run_tracking_button.click(fn=_run_tracking_for_ui, inputs=[output_root], outputs=[tracking_result])
-        run_body4d_button.click(fn=_run_body4d_for_ui, inputs=[output_root], outputs=[body4d_result])
+        run_tracking_button.click(
+            fn=lambda output_root_value: (
+                lambda result: (
+                    result,
+                    str(result.get("effective_mask_video_path") or ""),
+                    str(result.get("tracking_preview_video_path") or ""),
+                )
+            )(_run_tracking_for_ui(output_root_value)),
+            inputs=[output_root],
+            outputs=[tracking_result, tracking_mask_video, tracking_preview_video],
+        )
+        run_body4d_button.click(
+            fn=lambda output_root_value: (
+                lambda result: (
+                    result,
+                    str(result.get("rendered_video_path") or ""),
+                )
+            )(_run_body4d_for_ui(output_root_value)),
+            inputs=[output_root],
+            outputs=[body4d_result, body4d_video],
+        )
         run_wan_export_button.click(fn=_run_wan_export_for_ui, inputs=[output_root], outputs=[wan_export_result])
 
         demo.controller = controller
@@ -241,7 +274,10 @@ def build_app():
             "run_body4d_button": run_body4d_button,
             "run_wan_export_button": run_wan_export_button,
             "tracking_result": tracking_result,
+            "tracking_mask_video": tracking_mask_video,
+            "tracking_preview_video": tracking_preview_video,
             "body4d_result": body4d_result,
+            "body4d_video": body4d_video,
             "wan_export_result": wan_export_result,
         }
     return demo
